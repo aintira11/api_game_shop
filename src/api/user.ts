@@ -96,7 +96,7 @@ router.post("/login", async (req: Request, res: Response) => {
 router.put("/update/:id", async (req: Request, res: Response) => {
   try {
     const user_id = Number(req.params.id);
-    const { username, email, password, profile, user_type } = req.body;
+    const { username, email, profile } = req.body;
 
     if (!user_id) {
       return res.status(400).json({ message: "ไม่พบ user_id" });
@@ -134,21 +134,12 @@ router.put("/update/:id", async (req: Request, res: Response) => {
       params.push(email);
     }
 
-    if (password) {
-      const hashedPassword = await bcrypt.hash(password, 10);
-      updateFields.push("password = ?");
-      params.push(hashedPassword);
-    }
 
     if (profile) {
       updateFields.push("profile = ?");
       params.push(profile);
     }
 
-    if (user_type) {
-      updateFields.push("user_type = ?");
-      params.push(user_type);
-    }
 
     // ถ้าไม่มี field ที่อัปเดต
     if (updateFields.length === 0) {
