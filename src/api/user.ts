@@ -116,39 +116,44 @@ router.put("/update/:id", async (req: Request, res: Response) => {
     let updateFields: string[] = [];
     let params: any[] = [];
 
+    // ตรวจสอบ username ซ้ำ (ยกเว้นของตัวเอง)
     if (username) {
+      const [dupUser] = await conn.query<any[]>(
+        "SELECT user_id FROM G_users WHERE username = ? AND user_id != ? LIMIT 1",
+        [username, user_id]
+      );
+      if (dupUser.length > 0) {
+        return res.status(400).json({ message: "ชื่อผู้ใช้นี้ถูกใช้งานแล้ว" });
+      }
       updateFields.push("username = ?");
       params.push(username);
     }
 
+    // ตรวจสอบ email ซ้ำ
     if (email) {
-      // ตรวจสอบว่าอีเมลซ้ำไหม (ยกเว้นของตัวเอง)
-      const [dupCheck] = await conn.query<any[]>(
+      const [dupEmail] = await conn.query<any[]>(
         "SELECT user_id FROM G_users WHERE email = ? AND user_id != ? LIMIT 1",
         [email, user_id]
       );
-      if (dupCheck.length > 0) {
+      if (dupEmail.length > 0) {
         return res.status(400).json({ message: "อีเมลนี้ถูกใช้งานแล้ว" });
       }
       updateFields.push("email = ?");
       params.push(email);
     }
 
-
+    // อัปเดตรูปโปรไฟล์
     if (profile) {
       updateFields.push("profile = ?");
       params.push(profile);
     }
 
-
-    // ถ้าไม่มี field ที่อัปเดต
     if (updateFields.length === 0) {
       return res.status(400).json({ message: "ไม่มีข้อมูลที่ต้องการอัปเดต" });
     }
 
     params.push(user_id);
 
-    // อัปเดตข้อมูล
     const [result] = await conn.query<ResultSetHeader>(
       `UPDATE G_users SET ${updateFields.join(", ")} WHERE user_id = ?`,
       params
@@ -160,6 +165,49 @@ router.put("/update/:id", async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error("Update user error:", err);
+    return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
+  }
+});
+
+
+// เปลี่ยนรหัสผ่าน
+router.put("/users/:id/change-password", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "กรุณากรอกข้อมูลให้ครบ" });
+    }
+
+    // ดึงข้อมูล user
+    const [users] = await conn.query<any[]>(
+      "SELECT password FROM G_users WHERE user_id = ?",
+      [id]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ message: "ไม่พบผู้ใช้" });
+    }
+
+    // ตรวจสอบรหัสผ่านเดิม
+    const isValid = await bcrypt.compare(currentPassword, users[0].password);
+    if (!isValid) {
+      return res.status(400).json({ message: "รหัสผ่านเดิมไม่ถูกต้อง" });
+    }
+
+    // เข้ารหัสรหัสผ่านใหม่
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // อัพเดทรหัสผ่าน
+    await conn.query(
+      "UPDATE G_users SET password = ? WHERE user_id = ?",
+      [hashedPassword, id]
+    );
+
+    return res.status(200).json({ message: "เปลี่ยนรหัสผ่านสำเร็จ" });
+  } catch (err) {
+    console.error("Change password error:", err);
     return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
   }
 });
