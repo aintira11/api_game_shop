@@ -7,7 +7,7 @@ export const router = express.Router();
 
 // test
 router.get("/", (req: Request, res: Response) => {
-  res.send("Auth router is working");
+  res.send("Hello GameShop");
 });
 
 // Register
@@ -92,7 +92,7 @@ router.post("/login", async (req: Request, res: Response) => {
   }
 });
 
-// 🧩 แก้ไขข้อมูลสมาชิก
+// แก้ไขข้อมูลสมาชิก
 router.put("/update/:id", async (req: Request, res: Response) => {
   try {
     const user_id = Number(req.params.id);
