@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-// import { router as index } from "./api/index"; 
+import { router as index } from "./api/index"; 
 import { router as user } from "./api/user"; 
 
 export const app = express();
@@ -10,6 +10,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/", user);
+app.use("/game", index);
 
 // app.use("/", (req, res) => {
 //   res.send("Hello World!!!");
