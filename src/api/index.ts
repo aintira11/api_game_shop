@@ -44,9 +44,9 @@ router.get("/games/:id", async (req: Request, res: Response) => {
 }); 
 
 // CREATE new game
-router.post("/games", async (req: Request, res: Response) => {
+router.post("/newgame", async (req: Request, res: Response) => {
   try {
-    const { game_name, price, game_type, game_image, description, release_date } = req.body;
+    const { game_name, price, game_type, game_image, description } = req.body;
 
     // Validation
     if (!game_name || !price) {
@@ -59,15 +59,14 @@ router.post("/games", async (req: Request, res: Response) => {
 
     // INSERT new game
     const [result] = await conn.query<ResultSetHeader>(
-      `INSERT INTO G_game (game_name, price, game_type, game_image, description, release_date, purchase_count)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO G_game (game_name, price, game_type, game_image, description, purchase_count)
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [
         game_name, 
         price, 
         game_type || null, 
         game_image || null, 
         description || null, 
-        release_date || null,
         0 // purchase_count default to 0
       ]
     );
@@ -83,7 +82,7 @@ router.post("/games", async (req: Request, res: Response) => {
 });
 
 // UPDATE game
-router.put("/games/:id", async (req: Request, res: Response) => {
+router.put("/gameUpdate/:id", async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { game_name, price, game_type, game_image, description, release_date } = req.body;
@@ -124,7 +123,7 @@ router.put("/games/:id", async (req: Request, res: Response) => {
 });
 
 // DELETE game
-router.delete("/games/:id", async (req: Request, res: Response) => {
+router.delete("/delete/:id", async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
