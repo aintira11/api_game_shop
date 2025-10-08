@@ -8,9 +8,19 @@ export const router = express.Router();
 router.get("/games", async (req: Request, res: Response) => {
   try {
     const [games] = await conn.query<any[]>(
-      `SELECT game_id, game_name, price, game_type, game_image, description, release_date, purchase_count 
-       FROM G_game 
-       ORDER BY release_date DESC`
+      `SELECT 
+         g.game_id, 
+         g.game_name, 
+         g.price, 
+         g.category_id,
+         c.category_name,
+         g.game_image, 
+         g.description, 
+         g.release_date, 
+         g.purchase_count
+       FROM G_game g
+       LEFT JOIN G_category c ON g.category_id = c.category_id
+       ORDER BY g.release_date DESC`
     );
 
     return res.status(200).json({ games });
@@ -24,11 +34,13 @@ router.get("/games", async (req: Request, res: Response) => {
 router.get("/games/:id", async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    
     const [games] = await conn.query<any[]>(
-      `SELECT game_id, game_name, price, game_type, game_image, description, release_date, purchase_count 
-       FROM G_game 
-       WHERE game_id = ?`,
+      `SELECT 
+         g.game_id, g.game_name, g.price, g.category_id, c.category_name,
+         g.game_image, g.description, g.release_date, g.purchase_count
+       FROM G_game g
+       LEFT JOIN G_category c ON g.category_id = c.category_id
+       WHERE g.game_id = ?`,
       [id]
     );
 
@@ -41,15 +53,14 @@ router.get("/games/:id", async (req: Request, res: Response) => {
     console.error("Get game error:", err);
     return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
   }
-}); 
+});
 
 // CREATE new game
 router.post("/newgame", async (req: Request, res: Response) => {
   try {
-    const { game_name, price, game_type, game_image, description } = req.body;
+    const { game_name, price, category_id, game_image, description, release_date } = req.body;
 
-    // Validation
-    if (!game_name || !price) {
+    if (!game_name || price == null) {
       return res.status(400).json({ message: "กรุณากรอกชื่อเกมและราคา" });
     }
 
@@ -57,18 +68,10 @@ router.post("/newgame", async (req: Request, res: Response) => {
       return res.status(400).json({ message: "ราคาต้องมากกว่าหรือเท่ากับ 0" });
     }
 
-    // INSERT new game
     const [result] = await conn.query<ResultSetHeader>(
-      `INSERT INTO G_game (game_name, price, game_type, game_image, description, purchase_count)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        game_name, 
-        price, 
-        game_type || null, 
-        game_image || null, 
-        description || null, 
-        0 // purchase_count default to 0
-      ]
+      `INSERT INTO G_game (game_name, price, category_id, game_image, description, release_date, purchase_count)
+       VALUES (?, ?, ?, ?, ?, ?, 0)`,
+      [game_name, price, category_id || null, game_image || null, description || null, release_date || null]
     );
 
     return res.status(201).json({
@@ -81,13 +84,13 @@ router.post("/newgame", async (req: Request, res: Response) => {
   }
 });
 
+
 // UPDATE game
 router.put("/gameUpdate/:id", async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { game_name, price, game_type, game_image, description } = req.body;
+    const { game_name, price, category_id, game_image, description } = req.body;
 
-    // Check if game exists
     const [existingGames] = await conn.query<any[]>(
       "SELECT game_id FROM G_game WHERE game_id = ?",
       [id]
@@ -97,21 +100,20 @@ router.put("/gameUpdate/:id", async (req: Request, res: Response) => {
       return res.status(404).json({ message: "ไม่พบเกม" });
     }
 
-    // Validation
     if (price !== undefined && price < 0) {
       return res.status(400).json({ message: "ราคาต้องมากกว่าหรือเท่ากับ 0" });
     }
 
-    // UPDATE game
     await conn.query(
       `UPDATE G_game 
-       SET game_name = COALESCE(?, game_name),
-           price = COALESCE(?, price),
-           game_type = ?,
-           game_image = ?,
-           description = ?
+       SET 
+         game_name = COALESCE(?, game_name),
+         price = COALESCE(?, price),
+         category_id = COALESCE(?, category_id),
+         game_image = COALESCE(?, game_image),
+         description = COALESCE(?, description)
        WHERE game_id = ?`,
-      [game_name, price, game_type, game_image, description, id]
+      [game_name, price, category_id, game_image, description, id]
     );
 
     return res.status(200).json({ message: "อัพเดทเกมสำเร็จ" });
@@ -120,6 +122,7 @@ router.put("/gameUpdate/:id", async (req: Request, res: Response) => {
     return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
   }
 });
+
 
 // DELETE game
 router.delete("/delete/:id", async (req: Request, res: Response) => {
@@ -149,23 +152,29 @@ router.delete("/delete/:id", async (req: Request, res: Response) => {
 // Search games
 router.get("/games/search", async (req: Request, res: Response) => {
   try {
-    const { query, game_type } = req.query;
-    
-    let sql = `SELECT game_id, game_name, price, game_type, game_image, description, release_date, purchase_count 
-               FROM G_game WHERE 1=1`;
+    const { query, category_id } = req.query;
+
+    let sql = `
+      SELECT 
+        g.game_id, g.game_name, g.price, g.category_id, c.category_name,
+        g.game_image, g.description, g.release_date, g.purchase_count
+      FROM G_game g
+      LEFT JOIN G_category c ON g.category_id = c.category_id
+      WHERE 1=1
+    `;
     const params: any[] = [];
 
     if (query) {
-      sql += ` AND (game_name LIKE ? OR description LIKE ?)`;
+      sql += ` AND (g.game_name LIKE ? OR g.description LIKE ?)`;
       params.push(`%${query}%`, `%${query}%`);
     }
 
-    if (game_type && game_type !== 'all') {
-      sql += ` AND game_type = ?`;
-      params.push(game_type);
+    if (category_id && category_id !== 'all') {
+      sql += ` AND g.category_id = ?`;
+      params.push(category_id);
     }
 
-    sql += ` ORDER BY release_date DESC`;
+    sql += ` ORDER BY g.release_date DESC`;
 
     const [games] = await conn.query<any[]>(sql, params);
 
@@ -176,7 +185,7 @@ router.get("/games/search", async (req: Request, res: Response) => {
   }
 });
 
-// Increment purchase count
+// Increment purchase count อัปเดตยอดซื้อเกม
 router.post("/games/:id/purchase", async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
