@@ -10,6 +10,29 @@ router.get("/", (req: Request, res: Response) => {
   res.send("Hello GameShop");
 });
 
+// เส้นแสดงเกมขายดี 10 อันดับ
+router.get("/games/bestseller", async (req: Request, res: Response) => {
+  try {
+    // ดึงข้อมูลเกมที่มียอดขายสูงสุด
+    const [rows] = await conn.query<any[]>(`
+      SELECT 
+      *
+      FROM G_game
+      ORDER BY purchase_count DESC
+      LIMIT 10;
+    `);
+
+    return res.status(200).json({
+      message: "แสดงรายการเกมขายดีสำเร็จ",
+      data: rows,
+    });
+  } catch (err) {
+    console.error("Get bestseller error:", err);
+    return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
+  }
+});
+
+
 // Register
 router.post("/register", async (req: Request, res: Response) => {
   try {

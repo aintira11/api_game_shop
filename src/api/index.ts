@@ -202,7 +202,7 @@ router.post("/games/:id/purchase", async (req: Request, res: Response) => {
   }
 });
 
-// 🔹 GET: ดึงหมวดหมู่ทั้งหมด
+// หมวดหมู่ทั้งหมด
 router.get("/categories", async (req: Request, res: Response) => {
   try {
     const [categories] = await conn.query<any[]>(
