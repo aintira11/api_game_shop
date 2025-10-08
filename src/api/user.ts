@@ -22,19 +22,7 @@ router.get("/games/bestseller", async (req: Request, res: Response) => {
       LIMIT 10;
     `);
 
-    // const data = rows.map((game) => ({
-    //   game_id: game.game_id,
-    //   game_name: game.game_name,
-    //   purchase_count: game.purchase_count,
-    //   game_image: game.game_image,
-    //   price: game.price,
-    //   description: game.description,
-    //   release_date: game.release_date,
-    //   category_id: game.category_id
-    // }));
-    return res.status(200).json({
-      rows
-    });
+    res.json(rows);
   } catch (err) {
     console.error("Get bestseller error:", err);
     return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
