@@ -85,7 +85,7 @@ router.post("/newgame", async (req: Request, res: Response) => {
 router.put("/gameUpdate/:id", async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { game_name, price, game_type, game_image, description, release_date } = req.body;
+    const { game_name, price, game_type, game_image, description } = req.body;
 
     // Check if game exists
     const [existingGames] = await conn.query<any[]>(
@@ -109,10 +109,9 @@ router.put("/gameUpdate/:id", async (req: Request, res: Response) => {
            price = COALESCE(?, price),
            game_type = ?,
            game_image = ?,
-           description = ?,
-           release_date = ?
+           description = ?
        WHERE game_id = ?`,
-      [game_name, price, game_type, game_image, description, release_date, id]
+      [game_name, price, game_type, game_image, description, id]
     );
 
     return res.status(200).json({ message: "อัพเดทเกมสำเร็จ" });
