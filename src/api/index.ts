@@ -217,3 +217,72 @@ router.get("/categories", async (req: Request, res: Response) => {
   }
 });
 
+
+// POST เพิ่มหมวดหมู่ใหม่
+router.post("/categories/add", async (req: Request, res: Response) => {
+  try {
+    const { category_name, description } = req.body;
+
+    if (!category_name) {
+      return res.status(400).json({ message: "กรุณาระบุชื่อหมวดหมู่" });
+    }
+
+    // ตรวจสอบว่ามีหมวดหมู่นี้อยู่แล้วหรือยัง
+    const [exist] = await conn.query<any[]>(
+      "SELECT category_name FROM G_category WHERE category_name = ?",
+      [category_name]
+    );
+
+    if (exist.length > 0) {
+      return res.status(400).json({ message: "มีหมวดหมู่นี้อยู่แล้ว" });
+    }
+
+    //เพิ่มหมวดหมู่ใหม่
+    const [result] = await conn.query<ResultSetHeader>(
+      `INSERT INTO G_category (category_name, description)
+       VALUES (?, ?)`,
+      [category_name, description || null]
+    );
+
+    return res.status(201).json({
+      category_id: result.insertId,
+      category_name,
+      description: description || null,
+    });
+  } catch (err) {
+    console.error("Create category error:", err);
+    res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
+  }
+});
+
+
+// PUT แก้ไขหมวดหมู่
+router.put("/categories/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { category_name } = req.body;
+
+    // ตรวจสอบว่ามีหมวดหมู่นี้อยู่ไหม
+    const [exist] = await conn.query<any[]>(
+      "SELECT category_id FROM G_category WHERE category_id = ?",
+      [id]
+    );
+
+    if (exist.length === 0) {
+      return res.status(404).json({ message: "ไม่พบหมวดหมู่ที่ต้องการแก้ไข" });
+    }
+
+    // อัปเดตข้อมูล
+    await conn.query(
+      `UPDATE G_category 
+       SET category_name = COALESCE(?, category_name)
+       WHERE category_id = ?`,
+      [category_name, id]
+    );
+
+    return res.status(200).json({ message: "อัปเดตหมวดหมู่สำเร็จ" });
+  } catch (err) {
+    console.error("Update category error:", err);
+    res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
+  }
+});
