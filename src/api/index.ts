@@ -202,3 +202,18 @@ router.post("/games/:id/purchase", async (req: Request, res: Response) => {
   }
 });
 
+// 🔹 GET: ดึงหมวดหมู่ทั้งหมด
+router.get("/categories", async (req: Request, res: Response) => {
+  try {
+    const [categories] = await conn.query<any[]>(
+      `SELECT category_id, category_name, created_at 
+       FROM G_category `
+    );
+
+    return res.status(200).json({ categories });
+  } catch (err) {
+    console.error("Get categories error:", err);
+    return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
+  }
+});
+
