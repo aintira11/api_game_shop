@@ -69,9 +69,9 @@ router.post("/newgame", async (req: Request, res: Response) => {
     }
 
     const [result] = await conn.query<ResultSetHeader>(
-      `INSERT INTO G_game (game_name, price, category_id, game_image, description, release_date, purchase_count)
-       VALUES (?, ?, ?, ?, ?, ?, 0)`,
-      [game_name, price, category_id || null, game_image || null, description || null, release_date || null]
+      `INSERT INTO G_game (game_name, price, category_id, game_image, description, purchase_count)
+       VALUES (?, ?, ?, ?, ?, 0)`,
+      [game_name, price, category_id || null, game_image || null, description || null ]
     );
 
     return res.status(201).json({
