@@ -13,6 +13,21 @@ router.post("/gametocart", async (req: Request, res: Response) => {
       return res.status(400).json({ message: "กรุณาระบุ user_id และ game_id" });
     }
 
+    // ตรวจสอบว่าเกมนี้เคยถูกซื้อแล้วหรือยัง
+    const [boughtRows] = await conn.query<any[]>(
+      `
+      SELECT G_buy_item.game_id 
+      FROM G_buy_item 
+      INNER JOIN G_buy ON G_buy_item.buy_id = G_buy.buy_id 
+      WHERE G_buy.user_id = ? AND G_buy_item.game_id = ?
+      `,
+      [user_id, game_id]
+    );
+
+    if (boughtRows.length > 0) {
+      return res.status(201).json({ message: "คุณได้ซื้อเกมนี้ไปแล้ว" });
+    }
+
     // 1 ตรวจสอบว่าผู้ใช้นี้มีตะกร้าอยู่แล้วหรือยัง
     const [cartRows] = await conn.query<any[]>(
       "SELECT cart_id FROM G_cart WHERE user_id = ?",
@@ -29,7 +44,6 @@ router.post("/gametocart", async (req: Request, res: Response) => {
       );
       cart_id = result.insertId;
     } else {
-      // มีอยู่แล้ว
       cart_id = cartRows[0].cart_id;
     }
 
@@ -57,56 +71,120 @@ router.post("/gametocart", async (req: Request, res: Response) => {
 });
 
 
-// สั่งซื้อสินค้า
-router.post("/purchase", async (req: Request, res: Response) => {
+
+
+// สั่งซื้อเกม + หักเงิน + บันทึกประวัติธุรกรรม
+router.post("/buyGame", async (req: Request, res: Response) => {
   const connection = await conn.getConnection();
   await connection.beginTransaction();
 
   try {
-    const { user_id, items, total_price } = req.body;
+    const { user_id, cart_id, promotion_id = null, items, total_price } = req.body;
 
     /**
-     * items = [
-     *   { game_id: 1, quantity: 1, price: 299.00 },
-     *   { game_id: 3, quantity: 2, price: 199.00 }
-     * ]
+     * ตัวอย่าง ข้อมูลที่ส่งมา:
+     * {
+     *   "user_id": 1,
+     *   "cart_id": 2,
+     *   "promotion_id": null,
+     *   "total_price": 599.00,
+     *   "items": [
+     *     { "game_id": 1, "game_price": 299.00 },
+     *     { "game_id": 3, "game_price": 300.00 }
+     *   ]
+     * }
      */
 
-    if (!user_id || !Array.isArray(items) || items.length === 0) {
+    if (!user_id || !cart_id || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "ข้อมูลไม่ครบ" });
     }
 
-    // 1. สั่งซื้อ
-    const [orderResult] = await connection.query<ResultSetHeader>(
-      "INSERT INTO G_buy (user_id, total_price) VALUES (?, ?)",
-      [user_id, total_price]
+    // 1. ตรวจสอบยอดเงินใน wallet ของ user
+    const [userRows] = await connection.query<any[]>(
+      `SELECT wallet FROM G_users WHERE user_id = ?`,
+      [user_id]
     );
 
-    const orderId = orderResult.insertId;
+    if (userRows.length === 0) {
+      return res.status(404).json({ message: "ไม่พบผู้ใช้" });
+    }
 
-    // 2. เพิ่มเกมแต่ละรายการ
+    const currentBalance = parseFloat(userRows[0].wallet);
+
+    if (currentBalance < total_price) {
+      return res.status(400).json({ message: "ยอดเงินใน Wallet ไม่เพียงพอ" });
+    }
+
+    // 2. เพิ่มข้อมูลการสั่งซื้อใน G_buy
+    const [buyResult] = await connection.query<ResultSetHeader>(
+      `
+      INSERT INTO G_buy (user_id, promotion_id, total_price)
+      VALUES (?, ?, ?)
+      `,
+      [user_id, promotion_id, total_price]
+    );
+
+    const buyId = buyResult.insertId;
+
+    // 3. เพิ่มข้อมูลแต่ละเกมใน G_buy_item
     for (const item of items) {
       await connection.query(
-        `INSERT INTO G_buy_item (order_id, game_id, price)
-         VALUES (?, ?, ?)`,
-        [orderId, item.game_id, item.price]
+        `
+        INSERT INTO G_buy_item (buy_id, game_id, game_price)
+        VALUES (?, ?, ?)
+        `,
+        [buyId, item.game_id, item.game_price]
       );
 
-      // 3. เพิ่มยอดขายของเกม
+      // 4. อัปเดตยอดขายของเกม
       await connection.query(
-        "UPDATE G_game SET purchase_count = purchase_count + 1 WHERE game_id = ?",
-        [ item.game_id]
+        `UPDATE G_game SET purchase_count = purchase_count + 1 WHERE game_id = ?`,
+        [item.game_id]
       );
     }
 
-    // 4. ล้างตะกร้า
-    await connection.query("DELETE FROM G_cart WHERE user_id = ?", [user_id]);
+    // 5. หักเงินออกจาก wallet ของ user
+    const newBalance = currentBalance - parseFloat(total_price);
+    await connection.query(
+      `UPDATE G_users SET wallet = ? WHERE user_id = ?`,
+      [newBalance, user_id]
+    );
+
+    // 6. บันทึกประวัติธุรกรรมใน G_wallet_transactions
+    await connection.query(
+      `
+      INSERT INTO G_wallet_transactions (user_id, amount, type, transaction_date)
+      VALUES (?, ?, 'purchase', NOW())
+      `,
+      [user_id, -total_price] // เป็นลบเพราะเป็นการจ่ายเงิน
+    );
+
+    // 7. ลบเกมที่ซื้อแล้วออกจากตะกร้า
+    for (const item of items) {
+      await connection.query(
+        `DELETE FROM G_cart_item WHERE cart_id = ? AND game_id = ?`,
+        [cart_id, item.game_id]
+      );
+    }
+
+     // 8. หัก limit_promotion ถ้ามีการใช้ promotion
+    if (promotion_id !== null) {
+      await connection.query(
+        `
+        UPDATE G_promotion
+        SET limit_promotion = limit_promotion - 1
+        WHERE promotion_id = ? AND limit_promotion > 0
+        `,
+        [promotion_id]
+      );
+    }
 
     await connection.commit();
 
     return res.status(201).json({
       message: "สั่งซื้อสำเร็จ",
-      order_id: orderId,
+      buy_id: buyId,
+      remaining_balance: newBalance,
     });
   } catch (err) {
     await connection.rollback();
@@ -116,6 +194,7 @@ router.post("/purchase", async (req: Request, res: Response) => {
     connection.release();
   }
 });
+
 
 
 // ดูตะกร้าของผู้ใช้
@@ -150,13 +229,13 @@ router.get("/cartUser/:user_id", async (req: Request, res: Response) => {
 
 
 // ลบเกมออกจากตะกร้า
-router.delete("/cart/:user_id/:game_id", async (req: Request, res: Response) => {
+router.delete("/delectCart/:cart_id/:game_id", async (req: Request, res: Response) => {
   try {
-    const { user_id, game_id } = req.params;
+    const { cart_id, game_id } = req.params;
 
     const [result] = await conn.query<any>(
-      "DELETE FROM G_cart WHERE user_id = ? AND game_id = ?",
-      [user_id, game_id]
+      "DELETE FROM G_cart_item WHERE cart_id = ? AND game_id = ?",
+      [cart_id, game_id]
     );
 
     if (result.affectedRows === 0) {
@@ -166,6 +245,39 @@ router.delete("/cart/:user_id/:game_id", async (req: Request, res: Response) => 
     return res.status(200).json({ message: "ลบเกมออกจากตะกร้าสำเร็จ" });
   } catch (err) {
     console.error("Delete cart item error:", err);
+    return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
+  }
+});
+
+
+// โหลดโปรโมชั่นที่ผู้ใช้ยังไม่เคยใช้
+router.get("/loadpromotion/:user_id", async (req: Request, res: Response) => {
+  try {
+    const { user_id } = req.params;
+
+    if (!user_id) {
+      return res.status(400).json({ message: "กรุณาระบุ user_id" });
+    }
+
+    const [rows] = await conn.query<any[]>(
+      `
+      SELECT p.promotion_id, p.promotion_name, p.limit_promotion, 
+             p.discount_value, p.promotion_date,discount_type 
+      FROM G_promotion p
+      WHERE p.promotion_id NOT IN (
+        SELECT b.promotion_id 
+        FROM G_buy b 
+        WHERE b.user_id = ? AND b.promotion_id IS NOT NULL
+      )
+      AND (p.limit_promotion > 0 OR p.limit_promotion IS NULL)
+      ORDER BY p.promotion_date DESC
+      `,
+      [user_id]
+    );
+
+    return res.status(200).json(rows);
+  } catch (err) {
+    console.error("Load promotion error:", err);
     return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
   }
 });
