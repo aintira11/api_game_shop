@@ -1,6 +1,5 @@
 import express, { Request, Response } from "express";
 import { conn } from "../dbconnect";
-import bcrypt from "bcrypt";
 import { ResultSetHeader } from "mysql2"; // สำหรับ insert result type
 export const router = express.Router();
 
@@ -69,8 +68,6 @@ router.post("/gametocart", async (req: Request, res: Response) => {
     return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
   }
 });
-
-
 
 
 // สั่งซื้อเกม + หักเงิน + บันทึกประวัติธุรกรรม

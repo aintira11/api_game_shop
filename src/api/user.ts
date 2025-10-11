@@ -19,7 +19,7 @@ router.get("/games/bestseller", async (req: Request, res: Response) => {
       *
       FROM G_game
       ORDER BY purchase_count DESC
-      LIMIT 10;
+      LIMIT 5;
     `);
 
     res.json(rows);
