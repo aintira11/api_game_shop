@@ -29,7 +29,7 @@ router.get("/user/transactions/:user_id", async (req: Request, res: Response) =>
     const purchaseTransactions = transactions.filter(t => t.type === "purchase");
 
     if (purchaseTransactions.length > 0) {
-      // ✅ ดึงข้อมูลบิลการซื้อพร้อมโปรโมชั่น (เชื่อมกับ G_promotion)
+      //  ดึงข้อมูลบิลการซื้อพร้อมโปรโมชั่น (เชื่อมกับ G_promotion)
       const [buyData] = await conn.query<any[]>(`
         SELECT 
           b.buy_id,
@@ -45,7 +45,7 @@ router.get("/user/transactions/:user_id", async (req: Request, res: Response) =>
         ORDER BY b.buy_date DESC
       `, [user_id]);
 
-      // ✅ ดึงรายการเกมในแต่ละบิล
+      //  ดึงรายการเกมในแต่ละบิล
       const buyIds = buyData.map(b => b.buy_id);
       let gameDetails: any[] = [];
 
@@ -63,7 +63,7 @@ router.get("/user/transactions/:user_id", async (req: Request, res: Response) =>
         gameDetails = rows;
       }
 
-      // ✅ รวมข้อมูลเข้าใน transaction แต่ละอัน
+      //  รวมข้อมูลเข้าใน transaction แต่ละอัน
       for (const tx of transactions) {
         if (tx.type === "purchase") {
           // จับคู่กับบิลซื้อที่ใกล้เคียงที่สุดตามเวลา
@@ -102,44 +102,45 @@ router.get("/user/transactions/:user_id", async (req: Request, res: Response) =>
 });
 
 
-// เติมเงิน
+// เติมเงิน (ป้องกัน race condition)
 router.post("/wallet/deposit", async (req: Request, res: Response) => {
+  //“ขอ connection ส่วนตัว” จาก connection pool ของ MySQL (ไม่ใช่ connection ร่วมกับ request อื่น)
   const connection = await conn.getConnection();
   await connection.beginTransaction();
 
   try {
     const { user_id, amount } = req.body;
 
-    // ตรวจสอบข้อมูล
     if (!user_id || !amount || amount <= 0) {
       return res.status(400).json({ message: "กรุณาระบุ user_id และจำนวนเงินที่ถูกต้อง" });
     }
 
-    // 1. ตรวจสอบว่าผู้ใช้มีอยู่จริงไหม
+    //  1. ดึงข้อมูลพร้อมล็อกแถว
+    //ใช้ SELECT ... FOR UPDATE Database จะ “ล็อก row” ของ user_id นั้นไว้ จนกว่า commit หรือ rollback จะเสร็จ
     const [userRows] = await connection.query<any[]>(
-      "SELECT wallet FROM G_users WHERE user_id = ?",
+      "SELECT wallet FROM G_users WHERE user_id = ? FOR UPDATE",
       [user_id]
     );
 
     if (userRows.length === 0) {
+      await connection.rollback();
       return res.status(404).json({ message: "ไม่พบผู้ใช้นี้" });
     }
 
-    // ดึงยอดเงินปัจจุบัน แล้วคำนวณยอดใหม่
     const currentBalance = parseFloat(userRows[0].wallet || 0);
     const newBalance = currentBalance + parseFloat(amount);
 
-    // 2. อัปเดตยอดเงินใน G_users
+    //  2. อัปเดตยอดเงิน
     await connection.query(
       "UPDATE G_users SET wallet = ? WHERE user_id = ?",
       [newBalance, user_id]
     );
 
-    // 3. บันทึกประวัติการเติมเงิน
+    //  3. บันทึกประวัติการทำธุรกรรม
     await connection.query(
       `
-      INSERT INTO G_wallet_transactions (user_id, amount, type)
-      VALUES (?, ?, 'deposit')
+      INSERT INTO G_wallet_transactions (user_id, amount, type, transaction_date)
+      VALUES (?, ?, 'deposit', NOW())
       `,
       [user_id, amount]
     );
@@ -158,6 +159,7 @@ router.post("/wallet/deposit", async (req: Request, res: Response) => {
     connection.release();
   }
 });
+
 
 
 // ดึงข้อมูลผู้ใช้ (ไม่รวมรหัสผ่าน)
@@ -200,7 +202,7 @@ router.get("/user/:id", async (req: Request, res: Response) => {
 });
 
 // แสดงข้อมูลสมาชิกทั้งหมด
-router.get("/alluser", async (req: Request, res: Response) => {
+router.get("/allusers", async (req: Request, res: Response) => {
   try {
     const [rows] = await conn.query<any[]>(
       `
