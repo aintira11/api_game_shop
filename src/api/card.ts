@@ -278,3 +278,46 @@ router.get("/loadpromotion/:user_id", async (req: Request, res: Response) => {
     return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
   }
 });
+
+// แสดงรายการเกมที่ผู้ใช้ซื้อแล้ว
+router.get("/purchased-games/:user_id", async (req: Request, res: Response) => {
+  try {
+    const { user_id } = req.params;
+
+    // ตรวจสอบ user_id
+    if (!user_id) {
+      return res.status(400).json({ message: "กรุณาระบุ user_id" });
+    }
+
+    // ดึงข้อมูลเกมที่ซื้อแล้ว
+    const [rows] = await conn.query<any[]>(`
+      SELECT 
+        g.game_id,
+        g.game_name,
+        g.description,
+        g.price,
+        g.game_image,
+        g.release_date,
+        c.category_name,
+        g.purchase_count,
+        b.buy_date
+      FROM G_buy AS b
+      JOIN G_buy_item AS bi ON b.buy_id = bi.buy_id
+      JOIN G_game AS g ON bi.game_id = g.game_id
+      LEFT JOIN G_category AS c ON g.category_id = c.category_id
+      WHERE b.user_id = ?
+      ORDER BY b.buy_date DESC
+    `, [user_id]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "ยังไม่พบเกมที่ซื้อ" });
+    }
+
+    // ส่งข้อมูลกลับ
+    return res.status(200).json(rows);
+
+  } catch (err) {
+    console.error("Get purchased games error:", err);
+    return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
+  }
+});

@@ -15,10 +15,10 @@ router.get("/games/bestseller", async (req: Request, res: Response) => {
   try {
     // ดึงข้อมูลเกมที่มียอดขายสูงสุด
     const [rows] = await conn.query<any[]>(`
-      SELECT 
-      *
+       SELECT 
+        *
       FROM G_game
-      ORDER BY purchase_count DESC
+      ORDER BY purchase_count DESC, release_date DESC
       LIMIT 5;
     `);
 
@@ -28,6 +28,7 @@ router.get("/games/bestseller", async (req: Request, res: Response) => {
     return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
   }
 });
+
 
 
 // Register
