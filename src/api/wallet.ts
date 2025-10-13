@@ -230,3 +230,130 @@ router.get("/allusers", async (req: Request, res: Response) => {
     return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
   }
 });
+
+
+// -------------------------------- promotion --------------------------------------
+// เพิ่มโปรโมชั่นใหม่
+router.post("/add/promotion", async (req: Request, res: Response) => {
+  try {
+    const { promotion_name, limit_promotion, discount_type, discount_value } = req.body;
+
+    // ตรวจสอบความถูกต้องของข้อมูล
+    if (!promotion_name || !limit_promotion || !discount_type || !discount_value) {
+      return res.status(400).json({ message: "กรุณากรอกข้อมูลโปรโมชั่นให้ครบถ้วน" });
+    }
+
+    // เพิ่มข้อมูลโปรโมชั่นใหม่
+    await conn.query(
+      `
+      INSERT INTO G_promotion (promotion_name, limit_promotion, discount_type, discount_value)
+      VALUES (?, ?, ?, ?)
+      `,
+      [promotion_name, limit_promotion, discount_type, discount_value]
+    );
+
+    return res.status(201).json({ message: "เพิ่มโปรโมชั่นสำเร็จ" });
+  } catch (err) {
+    console.error("Add promotion error:", err);
+    return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
+  }
+});
+
+// แก้ไขโปรโมชั่น
+router.put("/edit/promotion/:promotion_id", async (req: Request, res: Response) => {
+  try {
+    const { promotion_id } = req.params;
+    const { promotion_name, limit_promotion, discount_type, discount_value } = req.body;
+
+    // ตรวจสอบว่ามี id ที่ต้องการแก้ไขไหม
+    if (!promotion_id) {
+      return res.status(400).json({ message: "กรุณาระบุ promotion_id" });
+    }
+
+    // ตรวจสอบว่ามีโปรโมชั่นนี้อยู่จริงไหม
+    const [rows] = await conn.query<any[]>(
+      `SELECT * FROM G_promotion WHERE promotion_id = ?`,
+      [promotion_id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "ไม่พบโปรโมชั่นนี้" });
+    }
+
+    // อัปเดตข้อมูลโปรโมชั่น
+    await conn.query(
+      `
+      UPDATE G_promotion 
+      SET 
+        promotion_name = ?,
+        limit_promotion = ?,
+        discount_type = ?,
+        discount_value = ?
+      WHERE promotion_id = ?
+      `,
+      [promotion_name, limit_promotion, discount_type, discount_value, promotion_id]
+    );
+
+    return res.status(200).json({ message: "แก้ไขโปรโมชั่นสำเร็จ" });
+  } catch (err) {
+    console.error("Update promotion error:", err);
+    return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
+  }
+});
+
+
+// แสดงโปรโมชั่นทั้งหมด
+router.get("/all/promotion", async (req: Request, res: Response) => {
+  try {
+    const [rows] = await conn.query<any[]>(`
+      SELECT 
+        promotion_id,
+        promotion_name,
+        limit_promotion,
+        discount_type,
+        discount_value,
+        promotion_date
+      FROM G_promotion
+      ORDER BY promotion_date DESC
+    `);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "ไม่พบโปรโมชั่นในระบบ" });
+    }
+
+    return res.status(200).json(rows);
+  } catch (err) {
+    console.error("Get promotions error:", err);
+    return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
+  }
+});
+
+
+// ลบโปรโมชั่น
+router.delete("/delete/promotion/:promotion_id", async (req: Request, res: Response) => {
+  try {
+    const { promotion_id } = req.params;
+
+    if (!promotion_id) {
+      return res.status(400).json({ message: "กรุณาระบุ promotion_id" });
+    }
+
+    // ตรวจสอบว่ามีโปรโมชั่นนี้อยู่ไหม
+    const [rows] = await conn.query<any[]>(
+      "SELECT * FROM G_promotion WHERE promotion_id = ?",
+      [promotion_id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "ไม่พบโปรโมชั่นนี้" });
+    }
+
+    // ลบโปรโมชั่น
+    await conn.query("DELETE FROM G_promotion WHERE promotion_id = ?", [promotion_id]);
+
+    return res.status(200).json({ message: "ลบโปรโมชั่นสำเร็จ" });
+  } catch (err) {
+    console.error("Delete promotion error:", err);
+    return res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
+  }
+});
